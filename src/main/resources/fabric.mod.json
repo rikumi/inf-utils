@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "nyaa-infinite-infernal-utils",
+  "version": "${version}",
+  "name": "NyaaCat Infinite Infernal Utils",
+  "description": "A utility mod for NyaaCat server, providing various helpful features and configurations.",
+  "authors": [
+    "NyaaCat"
+  ],
+  "contact": {
+    "homepage": "https://github.com/NyaaCat",
+    "sources": "https://github.com/NyaaCat/inf-utils"
+  },
+  "license": "MIT",
+  "icon": "assets/nyaa-infinite-infernal-utils/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.nyaa.infutils.NyaaInfiniteInfernalUtils"
+    ],
+    "client": [
+      "com.nyaa.infutils.client.NyaaInfiniteInfernalUtilsClient"
+    ],
+    "modmenu": [
+      "com.nyaa.infutils.config.ModMenuIntegration"
+    ]
+  },
+  "mixins": [
+    "nyaa-infinite-infernal-utils.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*",
+    "cloth-config": ">=18.0.0"
+  },
+  "suggests": {
+    "modmenu": ">=17.0.0"
+  }
+}

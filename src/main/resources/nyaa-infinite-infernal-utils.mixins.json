@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.nyaa.infutils.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EntityGlowMixin",
+    "EntityLightMixin",
+    "ClientWorldMixin",
+    "ClientPlayNetworkHandlerMixin"
+  ]
+}
