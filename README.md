@@ -2,6 +2,8 @@
 
 A utility mod for the NyaaCat Minecraft server, built on Fabric for Minecraft 1.21.11.
 
+<img width="0" height="0" alt="image" src="https://github.com/user-attachments/assets/411bdd66-dc44-4526-80e8-953028cc9cc0" />
+
 ## Requirements
 
 - Minecraft 1.21.11
