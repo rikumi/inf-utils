@@ -4,6 +4,7 @@ import com.nyaa.infutils.client.AutoUse;
 import com.nyaa.infutils.client.ManaDisplay;
 import com.nyaa.infutils.client.RegionOverlay;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket;
 import net.minecraft.network.packet.s2c.play.OverlayMessageS2CPacket;
 import net.minecraft.network.packet.s2c.play.TitleS2CPacket;
 import net.minecraft.text.Text;
@@ -50,6 +51,22 @@ public abstract class ClientPlayNetworkHandlerMixin {
                 if (ManaDisplay.shouldHideActionBar()) {
                     ci.cancel();
                 }
+            }
+        } catch (Throwable ignored) {
+            // Defensive.
+        }
+    }
+
+    /**
+     * Captures server-sent system chat messages so AutoUse can react to
+     * soul-brush cooldown notices ("冷却时间还没有结束, 请等待 X 秒...").
+     */
+    @Inject(method = "onGameMessage(Lnet/minecraft/network/packet/s2c/play/GameMessageS2CPacket;)V", at = @At("HEAD"))
+    private void infutils_captureGameMessage(GameMessageS2CPacket packet, CallbackInfo ci) {
+        try {
+            Text text = packet.content();
+            if (text != null) {
+                AutoUse.onGameMessage(text.getString());
             }
         } catch (Throwable ignored) {
             // Defensive.

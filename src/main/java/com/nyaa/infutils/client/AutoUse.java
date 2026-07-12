@@ -93,6 +93,8 @@ public final class AutoUse {
     private static int brushOriginalSlot = -1;    // player's original selected slot
     private static int brushPreEmptySlots = 0;    // empty slot count BEFORE the last click (for verification)
     private static int brushStaleCount = 0;       // consecutive no-change detections
+    // Server-reported cooldown for the soul brush (in ticks, parsed from chat).
+    private static int brushServerCooldownTicks = 0;
 
     // ---- charge/repair throttle (wait for server inventory refresh) ----
     private static int chargeRepairPendingTicks = 0; // ticks to wait after a charge/repair use before re-checking durability
@@ -177,6 +179,10 @@ public final class AutoUse {
 
     private static final Pattern ENERGY_PATTERN = Pattern.compile("能量剩余\\n■\\s+(\\d+)");
 
+    /** Server chat message: "冷却时间还没有结束, 请等待 X 秒再使用残魂收集刷" */
+    private static final Pattern SOUL_BRUSH_COOLDOWN_PATTERN =
+            Pattern.compile("请等待\\s*(\\d+(?:\\.\\d+)?)\\s*秒");
+
     // ---- timing constants ----
     private static final int LOGIN_GUARD_TICKS = 200;          // 10s @ 20tps: suppress potions right after login
     private static final int CHARGE_REPAIR_PENDING_TICKS = 6;  // wait for the server to refresh the inventory before re-checking durability
@@ -222,6 +228,28 @@ public final class AutoUse {
                 mana = Integer.parseInt(m.group(1));
             } catch (NumberFormatException ignored) {
                 // keep previous value
+            }
+        }
+    }
+
+    /**
+     * Called from the game-message (system chat) mixin. The server sends a
+     * cooldown notice for the soul brush like
+     * "冷却时间还没有结束, 请等待 3.5 秒再使用残魂收集刷"; we parse the
+     * seconds and wait that long before trying to use the brush again.
+     */
+    public static void onGameMessage(String text) {
+        if (text == null) {
+            return;
+        }
+        Matcher m = SOUL_BRUSH_COOLDOWN_PATTERN.matcher(text);
+        if (m.find()) {
+            try {
+                float seconds = Float.parseFloat(m.group(1))1;
+                brushServerCooldownTicks = Math.max(1, (int) Math.ceil((seconds + 1) * 20));
+                log("[残魂刷] 等待 " + seconds + " 秒再执行");
+            } catch (NumberFormatException ignored) {
+                // keep previous cooldown
             }
         }
     }
@@ -302,6 +330,9 @@ public final class AutoUse {
         }
         if (foodRetryCooldown > 0) {
             foodRetryCooldown--;
+        }
+        if (brushServerCooldownTicks > 0) {
+            brushServerCooldownTicks--;
         }
 
         int slotIdx = clampSlot(cfg.autoUse.slot);
@@ -428,7 +459,7 @@ public final class AutoUse {
         if (brushPhase == 25) {
             // Verify the player hasn't scrolled away from the brush slot.
             if (player.getInventory().getSelectedSlot() != brushHotbarSlot) {
-                log("[灵魂刷] 中止（快捷栏已切换）");
+                log("[残魂刷] 中止（快捷栏已切换）");
                 client.options.attackKey.setPressed(false);
                 inLeftClickCycle = false;
                 if (brushOriginalSlot >= 0 && player.getInventory().getSelectedSlot() != brushOriginalSlot) {
@@ -465,7 +496,7 @@ public final class AutoUse {
             if (!changed) {
                 brushStaleCount++;
                 if (brushStaleCount >= MAX_STALE_COUNT) {
-                    log("[灵魂刷] 连续 " + MAX_STALE_COUNT + " 次无效果，中止");
+                    log("[残魂刷] 连续 " + MAX_STALE_COUNT + " 次无效果，中止");
                     client.options.attackKey.setPressed(false);
                     inLeftClickCycle = false;
                     if (brushOriginalSlot >= 0 && bInv.getSelectedSlot() != brushOriginalSlot) {
@@ -915,6 +946,7 @@ public final class AutoUse {
         globalCooldown = 0;
         piggyCooldown = 0;
         foodRetryCooldown = 0;
+        brushServerCooldownTicks = 0;
         piggyHotbarSlot = -1;
         brushHotbarSlot = -1;
         inLeftClickCycle = false;  // safety: clear guard on full state reset
@@ -1398,6 +1430,7 @@ public final class AutoUse {
 
     /** Start a soul-brush collection cycle. Returns true if started. */
     private static boolean tryBrushStart(MinecraftClient client, ClientPlayerEntity player, int slotIdx) {
+        if (brushServerCooldownTicks > 0) return false;
         PlayerInventory inv = player.getInventory();
         int brush = -1;
         ItemStack brushStack = null;
@@ -1433,7 +1466,7 @@ public final class AutoUse {
             brushSwapSyncTicks = SWAP_SYNC_TICKS;
         }
         inLeftClickCycle = true;
-        log("[灵魂刷] 开始");
+        log("[残魂刷] 开始");
         return true;
     }
 
