@@ -245,7 +245,7 @@ public final class AutoUse {
         Matcher m = SOUL_BRUSH_COOLDOWN_PATTERN.matcher(text);
         if (m.find()) {
             try {
-                float seconds = Float.parseFloat(m.group(1))1;
+                float seconds = Float.parseFloat(m.group(1));
                 brushServerCooldownTicks = Math.max(1, (int) Math.ceil((seconds + 1) * 20));
                 log("[残魂刷] 等待 " + seconds + " 秒再执行");
             } catch (NumberFormatException ignored) {
