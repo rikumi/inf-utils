@@ -240,15 +240,17 @@ public final class SoundReplacer {
             return false;
         }
 
-        SoundEvent replacement = resolve(config, serverSoundId, targetEntity, x, y, z);
-        if (replacement == null) {
+        Resolved resolved = resolve(config, serverSoundId, targetEntity, x, y, z);
+        if (resolved == null || resolved.event == null) {
             lastResolvedReplacementId = "";
             return false;
         }
-        lastResolvedReplacementId = replacement.id().toString();
+        lastResolvedReplacementId = resolved.event.id().toString();
 
         float v = config.soundReplace.volume * volume;
-        float p = config.soundReplace.pitch * pitch;
+        float p = resolved.ignoreOriginalPitch
+                ? config.soundReplace.pitch
+                : config.soundReplace.pitch * pitch;
 
         MinecraftClient client = MinecraftClient.getInstance();
         SoundManager soundManager = client.getSoundManager();
@@ -260,7 +262,7 @@ public final class SoundReplacer {
         double jy = y + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.02;
         double jz = z + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.02;
         PositionedSoundInstance instance = new IndependentSoundInstance(
-                replacement, cat, v, p,
+                resolved.event, cat, v, p,
                 net.minecraft.util.math.random.Random.create(), jx, jy, jz);
 
         soundManager.play(instance);
@@ -293,6 +295,10 @@ public final class SoundReplacer {
         public int hashCode() {
             return Long.hashCode(token);
         }
+    }
+
+    /** Result of resolving a server sound to a replacement, plus playback hints. */
+    private record Resolved(SoundEvent event, boolean ignoreOriginalPitch) {
     }
 
     private static boolean matches(ModConfig config, String id, net.minecraft.sound.SoundCategory category,
@@ -388,8 +394,8 @@ public final class SoundReplacer {
         return false;
     }
 
-    private static SoundEvent resolve(ModConfig config, String serverSoundId,
-                                      Entity targetEntity, double x, double y, double z) {
+    private static Resolved resolve(ModConfig config, String serverSoundId,
+                                    Entity targetEntity, double x, double y, double z) {
         // 1) explicit user mapping: "substring=wand_small"
         for (String entry : config.soundReplace.mapping) {
             int eq = entry.indexOf('=');
@@ -401,7 +407,7 @@ public final class SoundReplacer {
             if (serverSoundId.toLowerCase(Locale.ROOT).contains(sub)) {
                 SoundEvent ev = byName(target);
                 if (ev != null) {
-                    return ev;
+                    return new Resolved(ev, true);
                 }
             }
         }
@@ -410,43 +416,52 @@ public final class SoundReplacer {
         //    them by origin — nearest summon (armor stand) or player's held weapon name.
         String contextName = resolveContextName(targetEntity, x, y, z);
         if (contextName != null) {
-            SoundEvent byContext = byContextName(contextName);
+            // Weapon-name overrides are explicit mappings: play the intended Terraria
+            // sound at its natural pitch instead of inheriting the original sound's pitch.
+            SoundEvent override = weaponOverride(contextName);
+            boolean ignoreOriginalPitch = false;
+            SoundEvent byContext = override;
+            if (byContext == null) {
+                byContext = byContextName(contextName);
+            } else {
+                ignoreOriginalPitch = true;
+            }
             if (byContext != null) {
                 NyaaInfiniteInfernalUtils.LOGGER.info(
                         "[infutils][snd-replace] '{}' -> context '{}' -> {}",
                         serverSoundId, contextName, byContext.id().toString());
-                return byContext;
+                return new Resolved(byContext, ignoreOriginalPitch);
             }
         }
 
         // 2b) Curated Infernal sound catalog (registered vanilla ids the plugin emits).
         SoundEvent infSound = InfernalSoundFilter.lookup(serverSoundId);
         if (infSound != null) {
-            return infSound;
+            return new Resolved(infSound, false);
         }
 
         // 3) keyword auto map (fallback for IDs that contain recognizable fragments)
         String lower = serverSoundId.toLowerCase(Locale.ROOT);
         for (Map.Entry<String, SoundEvent> e : DEFAULT_MAP.entrySet()) {
             if (lower.contains(e.getKey())) {
-                return e.getValue();
+                return new Resolved(e.getValue(), false);
             }
         }
         if (lower.contains("cast") || lower.contains("spell") || lower.contains("magic")) {
-            return TerrariaSounds.SPELL_CAST;
+            return new Resolved(TerrariaSounds.SPELL_CAST, false);
         }
         if (lower.contains("beam") || lower.contains("laser") || lower.contains("zap")) {
-            return TerrariaSounds.MAGIC_ZAP;
+            return new Resolved(TerrariaSounds.MAGIC_ZAP, false);
         }
         if (lower.contains("big") || lower.contains("heavy") || lower.contains("ultimate")) {
-            return TerrariaSounds.WAND_BIG;
+            return new Resolved(TerrariaSounds.WAND_BIG, false);
         }
 
         // 4) random pick among all variants
         if (config.soundReplace.randomize) {
-            return ALL.get(ThreadLocalRandom.current().nextInt(ALL.size()));
+            return new Resolved(ALL.get(ThreadLocalRandom.current().nextInt(ALL.size())), false);
         }
-        return TerrariaSounds.WAND_MEDIUM;
+        return new Resolved(TerrariaSounds.WAND_MEDIUM, false);
     }
 
     /** Determine a "context name" for an unregistered sound:

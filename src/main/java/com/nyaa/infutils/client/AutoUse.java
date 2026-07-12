@@ -123,6 +123,7 @@ public final class AutoUse {
     //          3 = left-click done, waiting for server energy/inventory refresh,
     //          4 = refresh received; check if energy still ≤1 + battery still present → loop back to 3, else finish
     private static int bpPhase = 0;
+    private static boolean bpLockMovement = false; // true while charging: zero out WASD movement input
     private static int bpSelectSyncTicks = 0; // countdown for phase 1 (select-sync)
     private static int bpSneakSyncTicks = 0;  // countdown for phase 2 (sneak-sync)
     private static int bpPreEnergy = -1;       // energy value BEFORE the last click (for verification)
@@ -752,6 +753,16 @@ public final class AutoUse {
                     }
                     resetBackpackState();
                     return;
+                }
+                // If the player is still holding right-click (e.g. flying with the backpack
+                // until energy ran out), vanilla blocks left-click attacks while the use
+                // action is active. Release the use key and stop using the item for this
+                // frame so the upcoming sneak+left-click charge is processed.
+                if (client.options.useKey.isPressed()) {
+                    client.options.useKey.setPressed(false);
+                    if (client.interactionManager != null) {
+                        client.interactionManager.stopUsingItem(player);
+                    }
                 }
                 // Release frame done — trigger attack via timesPressed reflection.
                 pressKeyEdge(client.options.attackKey);
@@ -1672,6 +1683,7 @@ public final class AutoUse {
         selectSlot(client, player, backpackSlot);
         bpInvSlot = backpackSlot;
         bpPhase = 1; // start phase 1: select-sync countdown
+        bpLockMovement = true; // zero out WASD movement while charging
         bpSelectSyncTicks = SWAP_SYNC_TICKS;
         inLeftClickCycle = true;
         log("[背包充能] 开始（能量 " + energy + "）");
@@ -2309,10 +2321,16 @@ public final class AutoUse {
         bpInvSlot = -1;
         bpOriginalSlot = -1;
         bpPhase = 0;
+        bpLockMovement = false;
         bpSelectSyncTicks = 0;
         bpSneakSyncTicks = 0;
         bpPreEnergy = -1;
         bpStaleCount = 0;
+    }
+
+    /** Exposed to the KeyboardInput mixin: zero out WASD while backpack is charging. */
+    public static boolean isBackpackMovementLocked() {
+        return bpLockMovement;
     }
 
     private static void resetCrState() {
