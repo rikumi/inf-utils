@@ -174,8 +174,8 @@ public final class AutoUse {
     private static final Pattern MANA_PATTERN = Pattern.compile("MANA\\s+(\\d+)");
     private static final Pattern CHARGE_REPAIR_PATTERN =
             Pattern.compile("潜行[+＋]左键(充能|修复)\\s+消耗(.+)");
-    // 背包能量行始终同行渲染：「能量剩余」与数字之间为一个空白符（如「能量剩余 1」）。
-    private static final Pattern ENERGY_PATTERN = Pattern.compile("能量剩余\\s+(\\d+)");
+
+    private static final Pattern ENERGY_PATTERN = Pattern.compile("能量剩余\\n■\\s+(\\d+)");
 
     // ---- timing constants ----
     private static final int LOGIN_GUARD_TICKS = 200;          // 10s @ 20tps: suppress potions right after login
