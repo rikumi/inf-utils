@@ -97,7 +97,7 @@ public class ModConfig implements ConfigData {
         public boolean enabled = true;
 
         @Comment("两粒子被视为同曲线的最大距离（格），保持较低避免散乱粒子串联，攻击弧断裂时可调高")
-        public float maxSegmentDistance = 0.3F;
+        public float maxSegmentDistance = 1F;
 
         @Comment("每帧追踪的最大服务器粒子数")
         @ConfigEntry.BoundedDiscrete(min = 16, max = 4096)
@@ -127,7 +127,7 @@ public class ModConfig implements ConfigData {
 
         @Comment("最小连接粒子数，低于此值视为孤立光点")
         @ConfigEntry.BoundedDiscrete(min = 2, max = 16)
-        public int minCurvePoints = 2;
+        public int minCurvePoints = 6;
 
         @Comment("叠加发光/泛光效果")
         public boolean additiveGlow = true;
