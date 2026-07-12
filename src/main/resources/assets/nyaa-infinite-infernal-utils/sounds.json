@@ -1,6 +1,6 @@
 {
-  "wand_small":  { "sounds": [ { "name": "nyaa-infinite-infernal-utils:magic_item9",  "type": "file" } ] },
-  "wand_medium": { "sounds": [ { "name": "nyaa-infinite-infernal-utils:magic_item8",  "type": "file" } ] },
+  "wand_small":  { "sounds": [ { "name": "nyaa-infinite-infernal-utils:magic_item8",  "type": "file" } ] },
+  "wand_medium": { "sounds": [ { "name": "nyaa-infinite-infernal-utils:magic_item9",  "type": "file" } ] },
   "wand_big":    { "sounds": [ { "name": "nyaa-infinite-infernal-utils:magic_item13", "type": "file" } ] },
   "spell_cast":  { "sounds": [ { "name": "nyaa-infinite-infernal-utils:magic_item27", "type": "file" } ] },
   "magic_zap":   { "sounds": [ { "name": "nyaa-infinite-infernal-utils:magic_item12", "type": "file" } ] },

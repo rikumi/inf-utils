@@ -522,8 +522,9 @@ public final class SoundReplacer {
     private static final Map<String, SoundEvent> WEAPON_OVERRIDES = new LinkedHashMap<>();
     static {
         // ---- 魔法武器（按 Terraria 原版音效细分）----
-        WEAPON_OVERRIDES.put("魔法灯笼", TerrariaSounds.MAGIC_ITEM8);    // 召唤光灵，声音偏魔法 (Crystal Storm / Magic Missile)
-        WEAPON_OVERRIDES.put("水晶风暴", TerrariaSounds.MAGIC_ITEM8);    // Crystal Storm
+        WEAPON_OVERRIDES.put("魔法灯笼", TerrariaSounds.MAGIC_ITEM9);    // 召唤光灵，声音偏魔法 (Crystal Storm / Magic Missile)
+        WEAPON_OVERRIDES.put("灯笼",     TerrariaSounds.MAGIC_ITEM9);    // 灯笼类兜底（如光灵上下文）
+        WEAPON_OVERRIDES.put("水晶风暴", TerrariaSounds.MAGIC_ITEM9);    // Crystal Storm
         WEAPON_OVERRIDES.put("黄金雨",   TerrariaSounds.MAGIC_ITEM13);   // Golden Shower
         WEAPON_OVERRIDES.put("狱火叉",   TerrariaSounds.MAGIC_ITEM73);   // Inferno Fork
         WEAPON_OVERRIDES.put("绿宝石法杖", TerrariaSounds.MAGIC_ITEM43); // gem staves
