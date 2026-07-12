@@ -139,12 +139,6 @@ public abstract class ClientWorldMixin {
             unregistered = true;
         }
 
-        // Drop-sound feature: block the vanilla XP-gain / level-up sounds so we can
-        // re-emit them contextually when the player picks up the Inf mineral blocks.
-        if (com.nyaa.infutils.client.DropSound.shouldBlock(id)) {
-            return true;
-        }
-
         // Try to replace the server sound with a Terraria wand SFX.
         boolean replaced = false;
         try {

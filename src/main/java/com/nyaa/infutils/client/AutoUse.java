@@ -963,6 +963,16 @@ public final class AutoUse {
         ModConfig.AutoUseSettings.AutoSpawnSettings spawn = cfg.autoUse.autoSpawn;
         float health = player.getHealth();
 
+        // NEVER run /spawn once the player is already dead. The death tick leaves
+        // health at 0 (which is below the threshold) with a "dropped" signal, so
+        // without this guard we would send /spawn AFTER death — which corrupts the
+        // server's recorded death location and breaks /back (can't return to where
+        // you died). The flee must only happen while the player is still alive.
+        if (player.isDead() || health <= 0) {
+            spawnPending = false;
+            return false;
+        }
+
         // 血量恢复到阈值以上：清除待定标志，允许下次掉血重新触发。
         if (health >= spawn.threshold) {
             spawnPending = false;
@@ -1668,6 +1678,14 @@ public final class AutoUse {
                 lastUseTick = tick;
                 lastUseItem = held.getItem();
                 lastUseName = Formatting.strip(held.getName().getString());
+                // 若右键的是召唤武器，提前设置待绑定项。这样即便紧接着右键了
+                // 别的东西（吃东西/放方块），lastUseItem 被覆盖，新召唤物仍能
+                // 通过 pendingBindItem 正确绑定到武器，避免整条 re-summon 链断裂。
+                if (SoundReplacer.isRightClickSummonWeapon(held)) {
+                    pendingBindItem = held.getItem();
+                    pendingBindName = lastUseName;
+                    pendingBindTick = tick;
+                }
             }
         }
 

@@ -134,6 +134,14 @@ public final class SoundReplacer {
         weaponCache.clear();
     }
 
+    /** 该物品是否是可以右键召唤的召唤武器（召唤类且使用方式含右键）。
+     *  供 AutoUse 在玩家右键召唤武器时提前设置待绑定项，避免紧接着右键
+     *  吃东西/放方块覆盖 lastUseItem 导致新召唤物绑定不上武器。 */
+    public static boolean isRightClickSummonWeapon(ItemStack stack) {
+        WeaponInfo info = parseWeapon(stack);
+        return info.isSummon() && (info.useMode == UseMode.RIGHT || info.useMode == UseMode.BOTH);
+    }
+
     // ---- Weapon use timing for context-based sound classification ----
     // Tracks recent player key presses so unregistered sounds can be classified
     // by weapon name even when no summon stand is nearby.
@@ -228,7 +236,7 @@ public final class SoundReplacer {
         if (category != null && isExcluded(config, category)) {
             return false;
         }
-        if (!matches(config, serverSoundId, category, unregistered)) {
+        if (!matches(config, serverSoundId, category, x, y, z, unregistered)) {
             return false;
         }
 
@@ -287,7 +295,8 @@ public final class SoundReplacer {
         }
     }
 
-    private static boolean matches(ModConfig config, String id, net.minecraft.sound.SoundCategory category, boolean unregistered) {
+    private static boolean matches(ModConfig config, String id, net.minecraft.sound.SoundCategory category,
+                                  double x, double y, double z, boolean unregistered) {
         // User-defined filters override everything.
         if (!config.soundReplace.matchFilters.isEmpty()) {
             String lower = id.toLowerCase(Locale.ROOT);
@@ -310,19 +319,29 @@ public final class SoundReplacer {
         //    wielding / recently used an Inf weapon (avoids replacing continuous ambient
         //    ability hums that play with no weapon in hand).
         if (!unregistered) {
-            if (InfernalSoundFilter.isInfernalSound(id) && hasInfWeaponContext()) {
+            if (InfernalSoundFilter.isInfernalSound(id) && hasInfWeaponContext(x, y, z)) {
                 return true;
             }
             return false;
         }
-        // Unregistered path: gate on weapon context.
-        return hasInfWeaponContext();
+        // Unregistered path: gate on weapon context (a nearby summon counts too).
+        return hasInfWeaponContext(x, y, z);
     }
 
-    /** True when the player is currently holding an Inf weapon or recently used one. */
-    private static boolean hasInfWeaponContext() {
+    /** True when an unregistered sound can be attributed to an Inf source.
+     *  Evidence (any one suffices):
+     *   - a nearby summon stand (invisible armor stand) — the sound came from a
+     *     summoned creature's attack, independent of what the player is holding;
+     *   - the player recently used an Inf weapon (within the timing window);
+     *   - the player is currently holding an Inf weapon. */
+    private static boolean hasInfWeaponContext(double x, double y, double z) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return false;
+        // A nearby summon stand is itself proof this is an Inf summon-attack sound,
+        // even when the player is holding food / a non-weapon item.
+        if (nearbySummonExists(x, y, z)) {
+            return true;
+        }
         // Recent weapon-use within the timing window is strongest evidence.
         if (recentWeaponInfo != null && recentWeaponInfo.isInfWeapon()
                 && (realTick - recentWeaponUseTick) <= WEAPON_USE_WINDOW) {
@@ -333,6 +352,28 @@ public final class SoundReplacer {
         if (!held.isEmpty()) {
             WeaponInfo heldInfo = parseWeapon(held);
             return heldInfo.isInfWeapon();
+        }
+        return false;
+    }
+
+    /** True if there is a summon stand (invisible armor stand) within the
+     *  configured radius of the given sound position. */
+    private static boolean nearbySummonExists(double x, double y, double z) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.world == null || client.player == null) return false;
+        ModConfig cfg = NyaaInfiniteInfernalUtils.CONFIG;
+        double radius = cfg != null ? cfg.autoUse.summonResummon.radius : 16.0;
+        boolean requireEquipment = cfg != null && cfg.summonGlow.requireEquipment;
+        double bestDist = radius * radius;
+        for (Entity e : client.world.getEntities()) {
+            if (!(e instanceof ArmorStandEntity as)) continue;
+            if (!as.isInvisible()) continue;
+            if (requireEquipment && !SummonGlow.hasEquipment(as)) continue;
+            double dx = e.getX() - x, dy = e.getY() - y, dz = e.getZ() - z;
+            double d = dx * dx + dy * dy + dz * dz;
+            if (d < bestDist) {
+                return true;
+            }
         }
         return false;
     }
@@ -460,7 +501,8 @@ public final class SoundReplacer {
             return recentWeaponInfo.name;
         }
 
-        // No recent weapon use — use the player's held weapon name.
+        // No recent weapon use — use the player's held weapon name (only if it's
+        // an Inf weapon; holding food / a non-weapon item yields no context).
         ItemStack held = client.player.getMainHandStack();
         if (!held.isEmpty()) {
             WeaponInfo heldInfo = parseWeapon(held);

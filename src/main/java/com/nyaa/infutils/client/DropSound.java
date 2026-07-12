@@ -16,25 +16,25 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.math.random.Random;
 
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
 /**
- * 掉落音效：开启后屏蔽原版经验增加/升级音效，改为在背包获得矿物块时播放对应音效。
+ * 掉落音效：开启后，当背包中的矿物块/魔矿数量因服务端发放而增加时，
+ * 在本地播放对应的「获得」音效（原版经验增加 / 升级音效）。
  * <p>
- * 1.21.9+ 移除了 {@code ItemPickupS2CPacket}，物品拾取改为通过背包同步下发，
- * 因此这里采用「背包数量差分」检测：每 tick 比较各矿物块的总数，发现增加时播放音效。
+ * 服务端发放矿物与魔矿时<b>不会下发任何声音</b>，因此这里采用「背包数量差分」检测：
+ * 每 tick 比较各矿物块的总数，发现增加时直接本地播放音效，无需依赖任何服务端信号。
  * <p>
- * 关键：服务器以 {@code entity.experience_orb.pickup} / {@code entity.player.levelup}
- * 音效作为「发放矿物」的发放信号（该音效会被本模组屏蔽）。只有在该信号后的短时窗口内、
- * 且背包矿物数确实增加时，才播放矿物音效。这样玩家「自己手动往背包里放矿物/魔矿」
- * （无此发放信号）不会误触发「获得」音效。
+ * 区分「服务端 give」与「玩家手动放入」：服务端发放时玩家通常不在任何 GUI 中，
+ * 而玩家手动在背包/容器里拖拽、转移矿物必然处于打开 GUI 的状态。因此本功能
+ * 仅在玩家<b>未打开任何界面</b>（{@code client.currentScreen == null}）时检测背包增加并播放；
+ * 打开 GUI 期间（手动整理/放入）一律不播放，且退出 GUI 时重新基线，避免关闭瞬间误触发。
  * <ul>
  *   <li>粗铁矿物块(polished_diorite)、精铁矿物块(iron_block)、纯金矿物块(gold_block)、
  *       蓝钻矿物块(diamond_block) → 经验增加音效</li>
  *   <li>天界魔矿(quartz) → 经验升5级音效</li>
  * </ul>
- * 重新播放的音效直接走 SoundManager，不经过 ClientWorld 的 mixin 拦截，避免被再次屏蔽。
+ * 播放的音效直接走 SoundManager，不经过 ClientWorld 的 mixin 拦截。
  */
 public final class DropSound {
 
@@ -65,16 +65,8 @@ public final class DropSound {
     private static final Map<Item, Integer> prevCounts = new HashMap<>();
     private static ClientWorld lastWorld = null;
     private static net.minecraft.client.network.ClientPlayerEntity lastPlayer = null;
-
-    /**
-     * 服务器「获得矿物」发放信号的剩余窗口（tick）。
-     * 服务器以 {@code entity.experience_orb.pickup} / {@code entity.player.levelup}
-     * 音效作为「发放矿物」的发放信号（该音效会被本模组屏蔽）。收到该信号时置为
-     * {@link #OBTAIN_WINDOW}；仅在此窗口内、且背包矿物数确实增加时，才播放矿物音效。
-     * 这样「玩家自己手动往背包里放矿物/魔矿」（无此发放信号）不会误触发「获得」音效。
-     */
-    private static int obtainSignalTicks = 0;
-    private static final int OBTAIN_WINDOW = 8;
+    /** 上一 tick 玩家是否处于 GUI 中（用于退出 GUI 时重新基线）。 */
+    private static boolean wasInGui = false;
 
     private DropSound() {
     }
@@ -84,31 +76,13 @@ public final class DropSound {
         return cfg != null && cfg.dropSound.enabled && FeatureGate.active();
     }
 
-    /** 该原版音效是否应被屏蔽（经验增加 / 升级）。 */
-    public static boolean shouldBlock(String serverSoundId) {
-        if (!enabled()) {
-            return false;
-        }
-        String lower = serverSoundId.toLowerCase(Locale.ROOT);
-        int colon = lower.indexOf(':');
-        String path = colon >= 0 ? lower.substring(colon + 1) : lower;
-        boolean block = path.equals("entity.experience_orb.pickup")
-                || path.equals("entity.player.levelup");
-        if (block) {
-            // 记下「服务器发放矿物」信号：仅在此窗口内、背包矿物数确实增加时
-            // 才播放矿物音效，避免玩家手动往背包里放矿物/魔矿时误触发。
-            obtainSignalTicks = OBTAIN_WINDOW;
-        }
-        return block;
-    }
-
-    /** 每 tick 调用：检测背包矿物块数量增加并播放对应音效。 */
+    /** 每 tick 调用：检测背包矿物块数量增加并本地播放对应音效。 */
     public static void tick(MinecraftClient client) {
         if (!enabled()) {
             prevCounts.clear();
             lastWorld = null;
             lastPlayer = null;
-            obtainSignalTicks = 0;
+            wasInGui = false;
             return;
         }
         ClientWorld world = client.world;
@@ -116,30 +90,45 @@ public final class DropSound {
         if (world == null || player == null) {
             return;
         }
-        // 发放信号窗口递减：每 tick 减 1，归零即视为「无发放信号」。
-        // 网络包（含被屏蔽的经验/升级音效）在 END_CLIENT_TICK 之前已处理，
-        // 因此本帧收到的发放信号在 tick 时仍处窗口内。
-        if (obtainSignalTicks > 0) {
-            obtainSignalTicks--;
-        }
         // 切换世界/玩家时重新基线，避免把重新下发的物品误判为「获得」。
         if (world != lastWorld || player != lastPlayer) {
             lastWorld = world;
             lastPlayer = player;
             prevCounts.clear();
-            obtainSignalTicks = 0;
             for (Item item : MINERALS.keySet()) {
                 prevCounts.put(item, countOf(player, item));
             }
+            wasInGui = client.currentScreen != null;
             return;
         }
+        boolean inGui = client.currentScreen != null;
+        // 玩家手动在背包/容器里放入、转移矿物必然处于 GUI 中 —— 此时不播放，
+        // 且重新基线，使关闭 GUI 的瞬间不会把已存在的矿物误判为「获得」。
+        if (inGui) {
+            if (!wasInGui) {
+                // 刚进入 GUI：用当前数量重设基线，忽略本次进入前的差值。
+                for (Item item : MINERALS.keySet()) {
+                    prevCounts.put(item, countOf(player, item));
+                }
+            }
+            wasInGui = true;
+            return;
+        }
+        if (wasInGui) {
+            // 刚退出 GUI：用当前数量重设基线，避免关闭瞬间把 GUI 内放入的矿物误触发。
+            for (Item item : MINERALS.keySet()) {
+                prevCounts.put(item, countOf(player, item));
+            }
+            wasInGui = false;
+            return;
+        }
+        // 服务端发放矿物/魔矿时不会下发任何声音，这里直接检测背包数量增加：
+        // 某矿物块总数比上一 tick 多 → 本地播放对应的「获得」音效。
         for (Map.Entry<Item, MineralInfo> e : MINERALS.entrySet()) {
             Item item = e.getKey();
             int before = prevCounts.getOrDefault(item, 0);
             int after = countOf(player, item);
-            // 仅在「服务器发放信号」窗口内、且背包矿物确实增加时播放，
-            // 避免玩家手动整理/移动矿物与魔矿时误触发「获得」音效。
-            if (after > before && obtainSignalTicks > 0) {
+            if (after > before) {
                 play(e.getValue());
             }
             prevCounts.put(item, after);
