@@ -204,7 +204,7 @@ public class ModConfig implements ConfigData {
         @Comment("不替换这些类别的音效（子串，小写），默认保护音乐/唱片/天气/环境/语音")
         public List<String> excludeCategories = new ArrayList<>(List.of("music", "records", "ambient", "weather", "voice"));
 
-        @Comment("音效ID子串→替换音效映射，格式:'子串=magic_item9'，空=自动映射")
+        @Comment("音效ID子串→替换音效映射，格式:'子串=magic_item8'，空=自动映射")
         public List<String> mapping = new ArrayList<>();
 
         @Comment("随机选择映射音效而非固定音效")
