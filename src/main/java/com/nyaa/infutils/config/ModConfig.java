@@ -320,8 +320,8 @@ public class ModConfig implements ConfigData {
         public FoodSettings food = new FoodSettings();
 
         public static class FoodSettings {
-            @Comment("饥饿缺失超过阈值时自动右键使用食物，仅食用白名单RPG食物和无lore原版食物，默认开启")
-            public boolean enabled = true;
+            @Comment("饥饿缺失超过阈值时自动右键使用食物，仅食用酒馆售卖食物和无 lore 原版食物，默认关闭")
+            public boolean enabled = false;
 
             @Comment("触发进食的缺失饥饿值（半肉排）")
             @ConfigEntry.BoundedDiscrete(min = 1, max = 20)
@@ -335,14 +335,14 @@ public class ModConfig implements ConfigData {
         public AutoSpawnSettings autoSpawn = new AutoSpawnSettings();
 
         public static class AutoSpawnSettings {
-            @Comment("生命值低于阈值且无生命药剂时自动执行/spawn逃生，默认关闭")
-            public boolean enabled = false;
+            @Comment("生命值低于阈值且无生命药剂时自动执行 /spawn 逃生，默认开启（并非保险，谨防越级秒杀！）")
+            public boolean enabled = true;
 
-            @Comment("触发/spawn的生命值（半心）")
-            @ConfigEntry.BoundedDiscrete(min = 1, max = 200)
+            @Comment("触发 /spawn 的生命值（半心），后期建议适当增加")
+            @ConfigEntry.BoundedDiscrete(min = 1, max = 40)
             public int threshold = 16;
 
-            @Comment("自动/spawn重试间隔（tick），20tick=1秒")
+            @Comment("自动 /spawn 重试间隔（tick），20tick=1秒")
             @ConfigEntry.BoundedDiscrete(min = 5, max = 1200)
             public int retryTicks = 20;
         }

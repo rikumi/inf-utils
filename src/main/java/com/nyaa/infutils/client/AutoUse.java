@@ -1245,7 +1245,11 @@ public final class AutoUse {
                 continue;
             }
             int nut = foodNutrition(s);
-            if (nut <= 0 || !isAllowedFood(s)) {
+            // RPG items without nutrition considered as fully saturating
+            if (nut == 0) {
+                nut = 20;
+            }
+            if (!isAllowedFood(s)) {
                 continue;
             }
             if (nut > missing) {
@@ -1312,8 +1316,13 @@ public final class AutoUse {
     }
 
     /** Number of ticks to hold right-click so the food finishes eating (+1 buffer).
-     *  Standard Minecraft foods take 1.6s (32 ticks); we hold 33 to be safe. */
+     *  Standard Minecraft foods take 1.6s (32 ticks); we hold 33 to be safe.
+     *  Foods whose name contains "卷" are eaten with a single click (no hold),
+     *  so only a brief press is needed. */
     private static int eatTicksOf(ItemStack s) {
+        if (Formatting.strip(s.getName().getString()).contains("卷")) {
+            return 1;
+        }
         return 33;
     }
 
