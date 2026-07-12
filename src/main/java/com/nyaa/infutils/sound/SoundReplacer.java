@@ -2,6 +2,7 @@ package com.nyaa.infutils.sound;
 
 import com.nyaa.infutils.NyaaInfiniteInfernalUtils;
 import com.nyaa.infutils.config.ModConfig;
+import com.nyaa.infutils.sound.InfernalSoundFilter;
 import com.nyaa.infutils.util.SummonGlow;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.sound.PositionedSoundInstance;
@@ -15,6 +16,7 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -53,6 +55,9 @@ public final class SoundReplacer {
 
     /** Whether the custom ogg files are actually present in the mod jar. */
     private static Boolean soundsAvailable = null;
+
+    /** Last replacement SoundEvent id resolved by {@link #resolve} (for the debug overlay). */
+    public static String lastResolvedReplacementId = "";
 
     // ---- Weapon lore parsing ----
     /** Lore line pattern: "42 基础近战伤害", "100 魔法伤害", "80 召唤伤害", "50 单次伤害", etc. */
@@ -229,8 +234,10 @@ public final class SoundReplacer {
 
         SoundEvent replacement = resolve(config, serverSoundId, targetEntity, x, y, z);
         if (replacement == null) {
+            lastResolvedReplacementId = "";
             return false;
         }
+        lastResolvedReplacementId = replacement.id().toString();
 
         float v = config.soundReplace.volume * volume;
         float p = config.soundReplace.pitch * pitch;
@@ -238,12 +245,46 @@ public final class SoundReplacer {
         MinecraftClient client = MinecraftClient.getInstance();
         SoundManager soundManager = client.getSoundManager();
         net.minecraft.sound.SoundCategory cat = net.minecraft.sound.SoundCategory.PLAYERS;
-        PositionedSoundInstance instance = new PositionedSoundInstance(
+        // 每次播放都用独立身份：同一武器快速连发时，后一次不会顶掉前一次的声音。
+        // 1) 唯一 token 让 equals/hashCode 永不相等（SoundSystem.sources 以对象为 key）；
+        // 2) 极小位置抖动避免任何基于“同位置同 id”的引擎层去重。
+        double jx = x + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.02;
+        double jy = y + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.02;
+        double jz = z + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.02;
+        PositionedSoundInstance instance = new IndependentSoundInstance(
                 replacement, cat, v, p,
-                net.minecraft.util.math.random.Random.create(), x, y, z);
+                net.minecraft.util.math.random.Random.create(), jx, jy, jz);
 
         soundManager.play(instance);
         return true;
+    }
+
+    /**
+     * 每次播放都拥有唯一身份的 {@link PositionedSoundInstance}。
+     * 默认 {@code PositionedSoundInstance} 不重写 equals/hashCode，本应按对象身份互不干扰；
+     * 但为绝对保证“多次同音效独立播放、互不顶替”，这里强制以每次 new 的自增 token 作为相等性依据。
+     */
+    private static final class IndependentSoundInstance extends PositionedSoundInstance {
+        private static final java.util.concurrent.atomic.AtomicLong SEQ = new java.util.concurrent.atomic.AtomicLong();
+        private final long token = SEQ.getAndIncrement();
+
+        IndependentSoundInstance(net.minecraft.sound.SoundEvent event,
+                                net.minecraft.sound.SoundCategory category,
+                                float volume, float pitch,
+                                net.minecraft.util.math.random.Random random,
+                                double x, double y, double z) {
+            super(event, category, volume, pitch, random, x, y, z);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return this == o;
+        }
+
+        @Override
+        public int hashCode() {
+            return Long.hashCode(token);
+        }
     }
 
     private static boolean matches(ModConfig config, String id, net.minecraft.sound.SoundCategory category, boolean unregistered) {
@@ -257,14 +298,29 @@ public final class SoundReplacer {
             }
             return false;
         }
-        // Default: only replace unregistered sounds (not in the client's SoundEvent
-        // registry) in PLAYERS category, AND only when the player is currently holding
-        // (or recently used) an Inf weapon (identified by its lore damage line pattern).
-        // Registered vanilla sounds are real game sounds — never replaced.
-        if (!unregistered || category != net.minecraft.sound.SoundCategory.PLAYERS) {
+        // Default matching:
+        //  - Unregistered (custom server) sounds: these can ONLY be Inf weapon sounds,
+        //    because the client has no vanilla sound with an unregistered id. They may
+        //    arrive in ANY category (the plugin emits summon / ranged / magic weapon
+        //    sounds via World.playSound at a location, which the client receives in the
+        //    MASTER category, NOT PLAYERS). We therefore no longer require PLAYERS and
+        //    only gate on weapon context below.
+        //  - Registered vanilla sounds: only replace those in the curated InfernalSoundFilter
+        //    catalog (the exact ids the Inf plugin emits), and only while the player is
+        //    wielding / recently used an Inf weapon (avoids replacing continuous ambient
+        //    ability hums that play with no weapon in hand).
+        if (!unregistered) {
+            if (InfernalSoundFilter.isInfernalSound(id) && hasInfWeaponContext()) {
+                return true;
+            }
             return false;
         }
-        // Check if the player has an Inf weapon context — either recent use or currently held.
+        // Unregistered path: gate on weapon context.
+        return hasInfWeaponContext();
+    }
+
+    /** True when the player is currently holding an Inf weapon or recently used one. */
+    private static boolean hasInfWeaponContext() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return false;
         // Recent weapon-use within the timing window is strongest evidence.
@@ -320,6 +376,12 @@ public final class SoundReplacer {
                         serverSoundId, contextName, byContext.id().toString());
                 return byContext;
             }
+        }
+
+        // 2b) Curated Infernal sound catalog (registered vanilla ids the plugin emits).
+        SoundEvent infSound = InfernalSoundFilter.lookup(serverSoundId);
+        if (infSound != null) {
+            return infSound;
         }
 
         // 3) keyword auto map (fallback for IDs that contain recognizable fragments)
@@ -409,10 +471,80 @@ public final class SoundReplacer {
         return null;
     }
 
+    // ============ 武器名称 -> Terraria 音效 显式覆盖表 ============
+    // 依据 docs/inf2/items 中的武器名，将「发出声音的武器」匹配到最合适的 Terraria 音效。
+    // 优先级高于按武器类别(byWeaponType)与通用关键词匹配，用于：
+    //   1) 修正类别默认音效不合适的武器（如魔法灯笼虽属召唤类别，声音却偏魔法）；
+    //   2) 为知名武器指定更贴合的 Terraria 原版音效（括号内为对应 Terraria 武器）。
+    // 匹配规则：武器名包含某关键词即命中，多个命中时取「最长关键词」优先（更具体的武器胜出）。
+    private static final Map<String, SoundEvent> WEAPON_OVERRIDES = new LinkedHashMap<>();
+    static {
+        // ---- 魔法武器（按 Terraria 原版音效细分）----
+        WEAPON_OVERRIDES.put("魔法灯笼", TerrariaSounds.MAGIC_ITEM9);    // 召唤光灵，声音偏魔法 (Crystal Storm / Magic Missile)
+        WEAPON_OVERRIDES.put("灯笼",     TerrariaSounds.MAGIC_ITEM9);    // 灯笼类兜底（如光灵上下文）
+        WEAPON_OVERRIDES.put("水晶风暴", TerrariaSounds.MAGIC_ITEM9);    // Crystal Storm
+        WEAPON_OVERRIDES.put("黄金雨",   TerrariaSounds.MAGIC_ITEM13);   // Golden Shower
+        WEAPON_OVERRIDES.put("狱火叉",   TerrariaSounds.MAGIC_ITEM73);   // Inferno Fork
+        WEAPON_OVERRIDES.put("绿宝石法杖", TerrariaSounds.MAGIC_ITEM43); // gem staves
+        WEAPON_OVERRIDES.put("毒液枪",   TerrariaSounds.MAGIC_ITEM43);   // Venom Staff
+        WEAPON_OVERRIDES.put("星云奥秘", TerrariaSounds.MAGIC_ITEM118);  // Nebula Arcanum
+        WEAPON_OVERRIDES.put("夢想封印", TerrariaSounds.MAGIC_ITEM118);  // Spirit Flame
+        WEAPON_OVERRIDES.put("星云闪耀", TerrariaSounds.MAGIC_ITEM118);  // Nebula
+        WEAPON_OVERRIDES.put("星云水晶法杖", TerrariaSounds.MAGIC_ITEM118);
+        WEAPON_OVERRIDES.put("月曜",     TerrariaSounds.MAGIC_ITEM89);   // Lunar Flare
+        WEAPON_OVERRIDES.put("终极棱镜", TerrariaSounds.MAGIC_ITEM13);   // Last Prism
+        WEAPON_OVERRIDES.put("霜冰法杖", TerrariaSounds.MAGIC_ITEM27);   // Ice Rod
+        WEAPON_OVERRIDES.put("暴雪法杖", TerrariaSounds.MAGIC_ITEM27);   // Ice Rod
+        WEAPON_OVERRIDES.put("奇妙法杖", TerrariaSounds.MAGIC_ITEM27);   // Rainbow Rod
+        WEAPON_OVERRIDES.put("雾雨火花·绽放", TerrariaSounds.MAGIC_ITEM27);
+        WEAPON_OVERRIDES.put("七彩画笔", TerrariaSounds.MAGIC_ITEM68);   // Rainbow Gun
+        WEAPON_OVERRIDES.put("暗影焰刀", TerrariaSounds.MAGIC_ITEM72);   // Shadowbeam Staff
+        WEAPON_OVERRIDES.put("暗影束法杖", TerrariaSounds.MAGIC_ITEM72);
+        WEAPON_OVERRIDES.put("暗影利刃", TerrariaSounds.MAGIC_ITEM72);
+        WEAPON_OVERRIDES.put("腐化法杖", TerrariaSounds.MAGIC_ITEM100);  // Clinger Staff
+        WEAPON_OVERRIDES.put("恶魔触手", TerrariaSounds.MAGIC_ITEM100);
+        WEAPON_OVERRIDES.put("水龙弹",   TerrariaSounds.MAGIC_ITEM21);   // Water Bolt
+        WEAPON_OVERRIDES.put("山荷叶",   TerrariaSounds.MAGIC_ITEM21);
+        WEAPON_OVERRIDES.put("雷神之戟", TerrariaSounds.MAGIC_ITEM12);   // Heat Ray / Laser Rifle
+        WEAPON_OVERRIDES.put("闪电链法杖", TerrariaSounds.MAGIC_ITEM12);
+        WEAPON_OVERRIDES.put("克雷贝尔狙击枪", TerrariaSounds.MAGIC_ITEM12);
+        WEAPON_OVERRIDES.put("激光机枪", TerrariaSounds.MAGIC_ITEM158);  // Space Gun
+        WEAPON_OVERRIDES.put("超电磁炮", TerrariaSounds.MAGIC_ITEM158);  // Space Gun
+        WEAPON_OVERRIDES.put("魔法烟花", TerrariaSounds.MAGIC_ITEM89);   // Meteor Staff
+        WEAPON_OVERRIDES.put("维度之杖", TerrariaSounds.MAGIC_ITEM89);
+        WEAPON_OVERRIDES.put("花火",     TerrariaSounds.MAGIC_ITEM9);    // 火花弹 (generic magic projectile)
+        // ---- 召唤武器（按 Terraria 原版音效细分）----
+        WEAPON_OVERRIDES.put("七彩调色盘", TerrariaSounds.SUMMON_ITEM79); // Rainbow Crystal Staff
+        WEAPON_OVERRIDES.put("万华镜",   TerrariaSounds.SUMMON_ITEM79);
+        WEAPON_OVERRIDES.put("精密线控仪", TerrariaSounds.SUMMON_ITEM79); // Lunar Portal Staff
+        WEAPON_OVERRIDES.put("星尘精灵", TerrariaSounds.SUMMON_ITEM120);  // Stardust Dragon
+        WEAPON_OVERRIDES.put("星尘风暴法杖", TerrariaSounds.SUMMON_ITEM120);
+        WEAPON_OVERRIDES.put("寒霜球法杖", TerrariaSounds.SUMMON_ITEM46); // Staff of the Frost Hydra
+        WEAPON_OVERRIDES.put("箭雨法杖", TerrariaSounds.SUMMON_ITEM46);   // Queen Spider Staff
+        WEAPON_OVERRIDES.put("爆炸机关法杖", TerrariaSounds.SUMMON_ITEM45);// Houndius Shootius Fireball Impact
+    }
+
+    /** 在显式覆盖表中按「最长关键词优先」匹配武器名，返回对应的 Terraria 音效；无命中返回 null。 */
+    private static SoundEvent weaponOverride(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        String bestKw = null;
+        for (String kw : WEAPON_OVERRIDES.keySet()) {
+            if (lower.contains(kw.toLowerCase(Locale.ROOT))) {
+                if (bestKw == null || kw.length() > bestKw.length()) {
+                    bestKw = kw;
+                }
+            }
+        }
+        return bestKw == null ? null : WEAPON_OVERRIDES.get(bestKw);
+    }
+
     /** Maps a summon / weapon name to a fitting Terraria sound.
      *  优先使用已知 WeaponInfo 的 weaponType（来自 lore 伤害行）来精确分类，
      *  其次再用名称关键词匹配作为 fallback。 */
     private static SoundEvent byContextName(String name) {
+        // 显式武器覆盖表（依据 docs/inf2/items）：最长关键词优先，先于类别/通用匹配
+        SoundEvent ov = weaponOverride(name);
+        if (ov != null) return ov;
         // 优先：查找 WeaponInfo 中是否有匹配此名称的武器（按名称匹配）
         WeaponInfo match = null;
         for (WeaponInfo info : weaponCache.values()) {
@@ -434,7 +566,7 @@ public final class SoundReplacer {
             return TerrariaSounds.MAGIC_ITEM27;
         }
         // Summon / minion keywords → summon sounds
-        if (containsAny(lower, "召唤", "仆从", "小兵", "史莱姆", "蜘蛛", "蜜蜂", "蝙蝠", "骷骼", "僵尸", "恶魔", "凤凰", "龙", "飞蛾", "幽灵", "乌鸦", "海盗", "吸血鬼", "灯笼", "图腾", "法杖", "圣杖")) {
+        if (containsAny(lower, "召唤", "仆从", "小兵", "史莱姆", "蜘蛛", "蜜蜂", "蝙蝠", "骷骼", "僵尸", "恶魔", "凤凰", "龙", "飞蛾", "幽灵", "乌鸦", "海盗", "吸血鬼", "图腾", "法杖", "圣杖")) {
             return TerrariaSounds.SUMMON_ITEM44;
         }
         if (containsAny(lower, "蜘蛛", "蛛")) {
@@ -507,5 +639,35 @@ public final class SoundReplacer {
 
     private static SoundEvent byName(String name) {
         return TerrariaSounds.byId(name);
+    }
+
+    /**
+     * Snapshot of the current weapon context for the debug overlay.
+     * Returns e.g. "held=焰之法杖(魔法) recent=yes" or "none".
+     */
+    public static String debugWeaponInfo() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return "none";
+        StringBuilder sb = new StringBuilder();
+        ItemStack held = client.player.getMainHandStack();
+        if (!held.isEmpty()) {
+            WeaponInfo info = parseWeapon(held);
+            if (info.isInfWeapon()) {
+                sb.append("held=").append(info.name).append("(").append(info.weaponType).append(")");
+            } else {
+                sb.append("held=").append(info.name).append("(non-Inf)");
+            }
+        } else {
+            sb.append("held=empty");
+        }
+        boolean recent = recentWeaponInfo != null && recentWeaponInfo.isInfWeapon()
+                && (realTick - recentWeaponUseTick) <= WEAPON_USE_WINDOW;
+        sb.append(" recent=").append(recent ? "yes" : "no");
+        return sb.toString();
+    }
+
+    /** True if this sound is an Inf weapon-sound candidate (would be eligible for replacement). */
+    public static boolean isInfSoundCandidate(String id, boolean unregistered) {
+        return unregistered || InfernalSoundFilter.isInfernalSound(id);
     }
 }

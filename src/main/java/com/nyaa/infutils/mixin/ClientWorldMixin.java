@@ -139,6 +139,12 @@ public abstract class ClientWorldMixin {
             unregistered = true;
         }
 
+        // Drop-sound feature: block the vanilla XP-gain / level-up sounds so we can
+        // re-emit them contextually when the player picks up the Inf mineral blocks.
+        if (com.nyaa.infutils.client.DropSound.shouldBlock(id)) {
+            return true;
+        }
+
         // Try to replace the server sound with a Terraria wand SFX.
         boolean replaced = false;
         try {
@@ -147,6 +153,13 @@ public abstract class ClientWorldMixin {
         } catch (Throwable t) {
             NyaaInfiniteInfernalUtils.LOGGER.warn("[infutils][snd-replace] failed for '{}': {}", id, t.toString());
         }
+        // Debug overlay: record every captured sound with its diagnostics.
+        String catName = category != null ? category.getName() : "null";
+        boolean candidate = com.nyaa.infutils.sound.SoundReplacer.isInfSoundCandidate(id, unregistered);
+        com.nyaa.infutils.client.SoundDebug.record(
+                id, catName, !unregistered, candidate, replaced,
+                com.nyaa.infutils.sound.SoundReplacer.lastResolvedReplacementId,
+                com.nyaa.infutils.sound.SoundReplacer.debugWeaponInfo());
         if (replaced) {
             NyaaInfiniteInfernalUtils.LOGGER.info("[infutils][snd-capture] replaced '{}' (unregistered={}) -> Terraria SFX", id, unregistered);
         }

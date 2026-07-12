@@ -6,6 +6,7 @@
     "EntityGlowMixin",
     "EntityLightMixin",
     "ClientWorldMixin",
-    "ClientPlayNetworkHandlerMixin"
+    "ClientPlayNetworkHandlerMixin",
+    "HeartTypeMixin"
   ]
 }

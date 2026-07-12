@@ -25,8 +25,14 @@ public class NyaaInfiniteInfernalUtilsClient implements ClientModInitializer {
         // Draw the persistent region-name label (centred below bossbar).
         HudRenderCallback.EVENT.register(RegionOverlay::render);
 
+        // Draw the sound-replace debug overlay (only visible when enabled in config).
+        HudRenderCallback.EVENT.register(SoundDebug::render);
+
         // Automatic item usage (life / mana potions, piggy bank, soul brush, charge/repair).
         ClientTickEvents.END_CLIENT_TICK.register(AutoUse::tick);
+
+        // Drop-sound: play XP / level-up SFX when mineral blocks are obtained.
+        ClientTickEvents.END_CLIENT_TICK.register(DropSound::tick);
 
         // Register quick-command hotkeys (X = /spawn, C = /back).
         // Key bindings MUST be registered during mod init, before GameOptions init.

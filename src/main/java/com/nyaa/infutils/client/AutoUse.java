@@ -66,12 +66,14 @@ public final class AutoUse {
     private static int piggyPreCoins = 0;         // coin count BEFORE the last click (for verification)
     private static int piggyStaleCount = 0;       // consecutive no-change detections (abort threshold)
 
+    // ---- towns where the piggy bank should NOT auto-deposit (when disableInTown) ----
+    private static final Set<String> TOWN_REGIONS = Set.of(
+            "月耀城", "千仞台", "远梦华镇", "枫之彼岸", "上野神社", "枫栖小镇", "峭崖灵城");
+
     // ---- auto-spawn (low-health flee) state ----
-    private static int spawnRetryCooldown = 0;    // ticks until the next /spawn retry
-    private static double spawnRefX = Double.NaN; // player position right after a /spawn
-    private static double spawnRefY = Double.NaN;
-    private static double spawnRefZ = Double.NaN;
-    private static boolean spawnPending = false;  // true between sending /spawn and observing a move
+    // 已发送过 /spawn 且尚未恢复到阈值以上：不再重复发送，避免刷指令被服务端剔除。
+    // 血量回到阈值以上时清除，允许下次掉血重新触发。
+    private static boolean spawnPending = false;
 
     // ---- login guard (suppress auto-spawn briefly after joining) ----
     private static int loginGuardTicks = 0;      // ticks left where auto-spawn is suppressed after joining
@@ -172,7 +174,8 @@ public final class AutoUse {
     private static final Pattern MANA_PATTERN = Pattern.compile("MANA\\s+(\\d+)");
     private static final Pattern CHARGE_REPAIR_PATTERN =
             Pattern.compile("潜行[+＋]左键(充能|修复)\\s+消耗(.+)");
-    private static final Pattern ENERGY_PATTERN = Pattern.compile("能量剩余\\s*\\n\\s*(\\d+)");
+    // 背包能量行始终同行渲染：「能量剩余」与数字之间为一个空白符（如「能量剩余 1」）。
+    private static final Pattern ENERGY_PATTERN = Pattern.compile("能量剩余\\s+(\\d+)");
 
     // ---- timing constants ----
     private static final int LOGIN_GUARD_TICKS = 200;          // 10s @ 20tps: suppress potions right after login
@@ -406,7 +409,7 @@ public final class AutoUse {
         if (piggyCooldown > 0) {
             piggyCooldown--;
         }
-        if (cfg.autoUse.piggyBank.enabled && piggyCooldown <= 0
+        if (cfg.autoUse.piggyBank.enabled && !inTown(cfg) && piggyCooldown <= 0
                 && tryPiggy(client, player, cfg, slotIdx)) {
             return;
         }
@@ -916,11 +919,7 @@ public final class AutoUse {
         brushHotbarSlot = -1;
         inLeftClickCycle = false;  // safety: clear guard on full state reset
         resetPiggyState();
-        spawnRetryCooldown = 0;
         spawnPending = false;
-        spawnRefX = Double.NaN;
-        spawnRefY = Double.NaN;
-        spawnRefZ = Double.NaN;
         loginGuardTicks = 0;
         chargeRepairPendingTicks = 0;
         lastHealth = Float.NaN; // reset health baseline on full state reset
@@ -963,71 +962,49 @@ public final class AutoUse {
     private static boolean tryAutoSpawn(MinecraftClient client, ClientPlayerEntity player, ModConfig cfg) {
         ModConfig.AutoUseSettings.AutoSpawnSettings spawn = cfg.autoUse.autoSpawn;
         float health = player.getHealth();
+
+        // 血量恢复到阈值以上：清除待定标志，允许下次掉血重新触发。
         if (health >= spawn.threshold) {
-            // Healthy again: clear any pending flee state.
             spawnPending = false;
-            spawnRefX = Double.NaN;
-            spawnRefY = Double.NaN;
-            spawnRefZ = Double.NaN;
-            spawnRetryCooldown = 0;
             return false;
         }
 
-        // Health is below threshold. Only flee if there is no health potion we could
-        // (and would) use instead. If health auto-use is OFF, always consider fleeing.
+        // 仅在「本 tick 掉血」时检查（下次掉血再检查），
+        // 而不是每 tick 反复发指令。lastHealth 为上一 tick 的血量。
+        boolean dropped = !Float.isNaN(lastHealth) && health < lastHealth;
+        if (!dropped) {
+            return false;
+        }
+
+        // 已成功发过一次 /spawn 且尚未恢复：不再重复发送。
+        if (spawnPending) {
+            return false;
+        }
+
+        // 有可用血药则优先喝药，不回城。
         boolean couldUsePotion = cfg.autoUse.healthPotion.enabled
                 && healthPotionAvailable(player, cfg);
         if (couldUsePotion) {
-            // The potion feature will handle it; bail out of spawning.
-            spawnPending = false;
-            spawnRetryCooldown = 0;
             return false;
         }
 
-        // Already at 月耀城 and the position actually changed
-        // after a /spawn? Then we are safe; stop retrying.
+        // 已在月耀城：不触发回城。
         String region = RegionOverlay.currentRegion();
-        boolean atSafeRegion = region != null && region.contains("月耀城");
-        if (spawnPending && atSafeRegion && positionChanged(player)) {
-            spawnPending = false;
-            spawnRefX = Double.NaN;
-            spawnRefY = Double.NaN;
-            spawnRefZ = Double.NaN;
-            spawnRetryCooldown = 0;
+        if (region != null && region.contains("月耀城")) {
             return false;
         }
 
-        // Throttle retries. If we are still pending and nothing moved, only retry
-        // every retryTicks. If not pending yet, fire immediately.
-        if (spawnRetryCooldown > 0) {
-            spawnRetryCooldown--;
-            return false;
-        }
-
-        // Send /spawn.
+        // 发送一次 /spawn；成功后置 spawnPending，本轮不再重复发送，
+        // 直到血量恢复到阈值以上，下次掉血再检查。
         try {
             client.getNetworkHandler().sendChatCommand("spawn");
         } catch (Throwable t) {
             NyaaInfiniteInfernalUtils.LOGGER.warn("[infutils][autouse] /spawn failed: {}", t.getMessage());
-            spawnRetryCooldown = Math.max(5, spawn.retryTicks);
             return false;
         }
-        spawnRefX = player.getX();
-        spawnRefY = player.getY();
-        spawnRefZ = player.getZ();
         spawnPending = true;
-        spawnRetryCooldown = Math.max(5, spawn.retryTicks);
         log("[自动逃跑] 生命值过低（" + (int) health + " < " + spawn.threshold + "），执行 /spawn");
         return true;
-    }
-
-    private static boolean positionChanged(ClientPlayerEntity player) {
-        if (Double.isNaN(spawnRefX)) {
-            return true; // no reference captured yet -> treat as moved
-        }
-        return player.getX() != spawnRefX
-                || player.getY() != spawnRefY
-                || player.getZ() != spawnRefZ;
     }
 
     private static boolean healthPotionAvailable(ClientPlayerEntity player, ModConfig cfg) {
@@ -1333,6 +1310,25 @@ public final class AutoUse {
     // ===================================================================
     // 3. Piggy bank (left-click, gold_nugget, until no 一文大钱)
     // ===================================================================
+
+    /** True when the player is currently in a town and the piggy-bank
+     *  "在城镇不生效" toggle is on, so deposits should be suppressed. */
+    private static boolean inTown(ModConfig cfg) {
+        if (!cfg.autoUse.piggyBank.disableInTown) {
+            return false;
+        }
+        String region = RegionOverlay.currentRegion();
+        if (region == null || region.isEmpty()) {
+            return false;
+        }
+        for (String town : TOWN_REGIONS) {
+            if (region.contains(town)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
 
     /** Start a piggy-bank deposit cycle. Returns true if started. */
     private static boolean tryPiggy(MinecraftClient client, ClientPlayerEntity player,

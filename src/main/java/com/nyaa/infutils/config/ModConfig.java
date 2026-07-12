@@ -17,6 +17,11 @@ public class ModConfig implements ConfigData {
     @Comment("调试模式，启用额外日志")
     public boolean debugMode = false;
 
+    // ==================== Feature: Health Bar ====================
+
+    @Comment("取消生命条凋零效果（整体变黑），防止看不清生命值，默认开启")
+    public boolean disableWitherHealthDarken = true;
+
     // ==================== Feature: Summon Glow ====================
 
     @ConfigEntry.Gui.CollapsibleObject
@@ -155,9 +160,9 @@ public class ModConfig implements ConfigData {
         @Comment("水平偏移（像素），相对于屏幕中心")
         public int xOffset = 0;
 
-        @Comment("垂直位置（像素），从屏幕顶部起（默认 36 ≈ bossbar 下方）")
-        @ConfigEntry.BoundedDiscrete(min = 0, max = 4000)
-        public int yOffset = 36;
+        @Comment("垂直位置（像素），从屏幕顶部起（默认 20 ≈ bossbar 下方）")
+        @ConfigEntry.BoundedDiscrete(min = 0, max = 1000)
+        public int yOffset = 20;
 
         @Comment("文字颜色")
         @ConfigEntry.ColorPicker
@@ -172,6 +177,16 @@ public class ModConfig implements ConfigData {
 
         @Comment("记录每次区域变化（调试用）")
         public boolean debugLog = false;
+    }
+
+    // ==================== Feature: Drop Sound (掉落音效) ====================
+
+    @ConfigEntry.Gui.CollapsibleObject
+    public DropSoundSettings dropSound = new DropSoundSettings();
+
+    public static class DropSoundSettings {
+        @Comment("屏蔽原版经验增加/升级音效，改为在掉落获得矿物块时播放对应音效，默认开启")
+        public boolean enabled = true;
     }
 
     // ==================== Feature: Sound Replace (Terraria wand SFX) ====================
@@ -205,6 +220,9 @@ public class ModConfig implements ConfigData {
 
         @Comment("记录每次音效替换（调试用）")
         public boolean verbose = false;
+
+        @Comment("在游戏内显示最近捕获的声音信息（id/分类/是否注册/是否替换），用于排查音效替换问题，默认关闭")
+        public boolean debugOverlay = false;
     }
 
     // ==================== Feature: Auto Use ====================
@@ -258,12 +276,15 @@ public class ModConfig implements ConfigData {
         public PiggyBankSettings piggyBank = new PiggyBankSettings();
 
         public static class PiggyBankSettings {
-            @Comment("出现一文大钱时自动左键存钱罐，默认关闭")
-            public boolean enabled = false;
+        @Comment("出现一文大钱时自动左键存钱罐，默认关闭")
+        public boolean enabled = false;
 
-            @Comment("背包中一文大钱数量达到此值时触发自动存入")
-            @ConfigEntry.BoundedDiscrete(min = 1, max = 2304)
-            public int threshold = 64;
+        @Comment("在城镇不生效：月耀城、千仞台、远梦华镇、枫之彼岸、上野神社、枫栖小镇、峭崖灵城 不自动存入大钱，以便临时取钱")
+        public boolean disableInTown = true;
+
+        @Comment("背包中一文大钱数量达到此值时触发自动存入")
+        @ConfigEntry.BoundedDiscrete(min = 1, max = 2304)
+        public int threshold = 64;
 
             @Comment("两次存钱罐使用间隔（tick）")
             @ConfigEntry.BoundedDiscrete(min = 1, max = 200)

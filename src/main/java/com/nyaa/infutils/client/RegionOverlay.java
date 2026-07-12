@@ -14,6 +14,9 @@ import net.minecraft.text.Text;
  */
 public final class RegionOverlay {
 
+    /** Spawn region, shown as a fallback before the server announces a region. */
+    private static final String DEFAULT_REGION = "月耀城";
+
     /** Latest non-empty region title received from the server (null until first one). */
     private static volatile Text latestRegion = null;
     private static volatile String latestString = "";
@@ -41,9 +44,19 @@ public final class RegionOverlay {
         latestString = "";
     }
 
-    /** Returns the latest region name announced by the server, or an empty string if unknown. */
+    /**
+     * Returns the region name to display: the last server title, or the spawn
+     * region (月耀城) as a fallback while in adventure mode before the server
+     * has announced a region (it may not send a title right after joining).
+     */
     public static String currentRegion() {
-        return latestString;
+        if (!latestString.isEmpty()) {
+            return latestString;
+        }
+        if (FeatureGate.active()) {
+            return DEFAULT_REGION;
+        }
+        return "";
     }
 
     /** Called from HudRenderCallback to draw the region label. */
@@ -55,9 +68,12 @@ public final class RegionOverlay {
         if (config == null || !config.regionOverlay.enabled) {
             return;
         }
-        if (latestRegion == null || latestString.isEmpty()) {
+        String regionText = currentRegion();
+        if (regionText.isEmpty()) {
             return;
         }
+        // Use the server-styled title when available; otherwise the plain fallback.
+        Text display = latestRegion != null ? latestRegion : Text.literal(regionText);
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || client.textRenderer == null) {
             return;
@@ -69,14 +85,14 @@ public final class RegionOverlay {
 
         // Centre horizontally on the screen, offset by config xOffset.
         int screenWidth = client.getWindow().getScaledWidth();
-        int textWidth = client.textRenderer.getWidth(latestRegion);
+        int textWidth = client.textRenderer.getWidth(display);
         int x = (screenWidth - textWidth) / 2 + config.regionOverlay.xOffset;
 
         // Place below the boss-bar area. Vanilla renders bars starting at y=12,
         // each bar ~19 px tall. With 1 bar the bottom is ~31; we add a small gap.
         int y = config.regionOverlay.yOffset;
 
-        graphics.drawText(client.textRenderer, latestRegion, x, y, argb,
+        graphics.drawText(client.textRenderer, display, x, y, argb,
                 config.regionOverlay.shadow);
     }
 }

@@ -83,14 +83,15 @@ public final class InfernalSoundFilter {
         medium("entity.enderman.teleport");
         // AbilityPhaseShift.warningSound = ENTITY_ENDERMAN_STARE
         medium("entity.enderman.stare");
-        // GravityWell.nullZoneSound / SoulHarvest.windowOpenSound = BLOCK_BEACON_ACTIVATE
-        medium("block.beacon.activate");
-        // SoulHarvest.windowCloseSound = BLOCK_BEACON_DEACTIVATE
-        medium("block.beacon.deactivate");
-        // AbilityTemporalRift.warningSound = BLOCK_BEACON_AMBIENT
-        medium("block.beacon.ambient");
+        // (block.beacon.* removed: they are environment / utility hums from GravityWell /
+        //  SoulHarvest / TemporalRift windows, NOT attack / ability sounds, so they must
+        //  not be replaced even while wielding an Inf weapon.)
         // AbilityTemporalRift.activeSound = BLOCK_PORTAL_AMBIENT
         medium("block.portal.ambient");
+        // AbilityX.useSound = BLOCK_ENCHANTMENT_TABLE_USE (magical use hum -> spell cast)
+        spell("block.enchantment_table.use");
+        // AbilityX.useSound = NOTE_BLOCK_BELL (bell chime telegraph -> wand swish)
+        medium("block.note_block.bell");
 
         // === Light pings / pickups / minor fx -> small wand ===
         // ChainLightning.chainSound / EchoStrike flash = BLOCK_NOTE_BLOCK_PLING
