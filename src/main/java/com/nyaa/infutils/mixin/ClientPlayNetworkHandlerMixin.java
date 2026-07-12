@@ -1,6 +1,7 @@
 package com.nyaa.infutils.mixin;
 
 import com.nyaa.infutils.client.AutoUse;
+import com.nyaa.infutils.client.ManaDisplay;
 import com.nyaa.infutils.client.RegionOverlay;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.network.packet.s2c.play.OverlayMessageS2CPacket;
@@ -36,12 +37,19 @@ public abstract class ClientPlayNetworkHandlerMixin {
      * InfiniteInfernal server uses to broadcast the player's MANA as "MANA <n>".
      * {@link AutoUse} parses it to decide when to auto-drink a mana potion.
      */
-    @Inject(method = "onOverlayMessage(Lnet/minecraft/network/packet/s2c/play/OverlayMessageS2CPacket;)V", at = @At("HEAD"))
+    @Inject(method = "onOverlayMessage(Lnet/minecraft/network/packet/s2c/play/OverlayMessageS2CPacket;)V", at = @At("HEAD"), cancellable = true)
     private void infutils_captureMana(OverlayMessageS2CPacket packet, CallbackInfo ci) {
         try {
             Text text = packet.text();
             if (text != null) {
                 AutoUse.onActionBar(text.getString());
+                ManaDisplay.onActionBar(text);
+                // When the mana display is enabled and hiding is on, swallow the
+                // server's action bar (mana/rage bar) so only our own ★ rendering
+                // shows. We still parsed it above for both AutoUse and ManaDisplay.
+                if (ManaDisplay.shouldHideActionBar()) {
+                    ci.cancel();
+                }
             }
         } catch (Throwable ignored) {
             // Defensive.

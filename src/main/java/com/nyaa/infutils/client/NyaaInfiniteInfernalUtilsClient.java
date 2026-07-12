@@ -25,6 +25,10 @@ public class NyaaInfiniteInfernalUtilsClient implements ClientModInitializer {
         // Draw the persistent region-name label (centred below bossbar).
         HudRenderCallback.EVENT.register(RegionOverlay::render);
 
+        // Draw the mana stars above the hunger bar. Registered via InGameHudMixin
+        // (head of renderSelectedItemName) so the stars sit BELOW the hotbar
+        // item-switch text tooltip instead of covering it.
+
         // Draw the sound-replace debug overlay (only visible when enabled in config).
         HudRenderCallback.EVENT.register(SoundDebug::render);
 

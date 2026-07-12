@@ -7,6 +7,7 @@
     "EntityLightMixin",
     "ClientWorldMixin",
     "ClientPlayNetworkHandlerMixin",
-    "HeartTypeMixin"
+    "HeartTypeMixin",
+    "InGameHudMixin"
   ]
 }

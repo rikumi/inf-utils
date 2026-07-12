@@ -141,11 +141,11 @@ public class ModConfig implements ConfigData {
         @Comment("仅将服务器发送的粒子转为曲线；原版本地粒子不受影响")
         public boolean attackOnly = true;
 
-        @Comment("仅转换类型ID包含这些字符串的粒子（空=全部），逗号分隔")
+        @Comment("仅转换类型ID包含这些字符串的粒子（空=全部），点击左侧加号增加")
         public List<String> particleTypes = new ArrayList<>();
 
-        @Comment("不转换类型ID包含这些字符串的粒子，逗号分隔")
-        public List<String> excludeParticleTypes = new ArrayList<>(List.of("end_gateway"));
+        @Comment("不转换类型ID包含这些字符串的粒子，点击左侧加号增加")
+        public List<String> excludeParticleTypes = new ArrayList<>(List.of("end_gateway", "fishing", "bubble"));
     }
 
     // ==================== Feature: Region Overlay ====================
@@ -223,6 +223,36 @@ public class ModConfig implements ConfigData {
 
         @Comment("在游戏内显示最近捕获的声音信息（id/分类/是否注册/是否替换），用于排查音效替换问题，默认关闭")
         public boolean debugOverlay = false;
+    }
+
+    // ==================== Feature: Mana Display (魔力显示) ====================
+
+    @ConfigEntry.Gui.CollapsibleObject
+    public ManaDisplaySettings manaDisplay = new ManaDisplaySettings();
+
+    public static class ManaDisplaySettings {
+        @Comment("解析底部动作栏的 MANA 文本，以五角星（★）显示当前/最大魔力，默认开启")
+        public boolean enabled = true;
+
+        @Comment("五角星颜色（RRGGBB）")
+        @ConfigEntry.ColorPicker
+        public int starColor = 0x9933FF;
+
+        @Comment("五角星不透明度（0-255）")
+        @ConfigEntry.BoundedDiscrete(min = 0, max = 255)
+        public int textAlpha = 255;
+
+        @Comment("五角星阴影")
+        public boolean shadow = true;
+
+        @Comment("水平偏移（像素），相对于饱食度条")
+        public int xOffset = 0;
+
+        @Comment("垂直偏移（像素），相对于饱食度条上方")
+        public int yOffset = 0;
+
+        @Comment("隐藏服务端下发的动作栏（魔力/怒气条），默认开启")
+        public boolean hideActionBar = true;
     }
 
     // ==================== Feature: Auto Use ====================
