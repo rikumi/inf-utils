@@ -1,6 +1,5 @@
 package com.nyaa.infutils.mixin;
 
-import com.nyaa.infutils.client.AutoUse;
 import com.nyaa.infutils.client.ManaDisplay;
 import com.nyaa.infutils.client.RegionOverlay;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
@@ -36,37 +35,19 @@ public abstract class ClientPlayNetworkHandlerMixin {
     /**
      * Captures the server-sent action-bar (bottom HUD) text, which the
      * InfiniteInfernal server uses to broadcast the player's MANA as "MANA <n>".
-     * {@link AutoUse} parses it to decide when to auto-drink a mana potion.
      */
     @Inject(method = "onOverlayMessage(Lnet/minecraft/network/packet/s2c/play/OverlayMessageS2CPacket;)V", at = @At("HEAD"), cancellable = true)
     private void infutils_captureMana(OverlayMessageS2CPacket packet, CallbackInfo ci) {
         try {
             Text text = packet.text();
             if (text != null) {
-                AutoUse.onActionBar(text.getString());
                 ManaDisplay.onActionBar(text);
                 // When the mana display is enabled and hiding is on, swallow the
                 // server's action bar (mana/rage bar) so only our own ★ rendering
-                // shows. We still parsed it above for both AutoUse and ManaDisplay.
+                // shows.
                 if (ManaDisplay.shouldHideActionBar()) {
                     ci.cancel();
                 }
-            }
-        } catch (Throwable ignored) {
-            // Defensive.
-        }
-    }
-
-    /**
-     * Captures server-sent system chat messages so AutoUse can react to
-     * soul-brush cooldown notices ("冷却时间还没有结束, 请等待 X 秒...").
-     */
-    @Inject(method = "onGameMessage(Lnet/minecraft/network/packet/s2c/play/GameMessageS2CPacket;)V", at = @At("HEAD"))
-    private void infutils_captureGameMessage(GameMessageS2CPacket packet, CallbackInfo ci) {
-        try {
-            Text text = packet.content();
-            if (text != null) {
-                AutoUse.onGameMessage(text.getString());
             }
         } catch (Throwable ignored) {
             // Defensive.

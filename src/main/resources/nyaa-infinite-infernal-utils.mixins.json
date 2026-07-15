@@ -9,7 +9,6 @@
     "ClientPlayNetworkHandlerMixin",
     "HeartTypeMixin",
     "InGameHudMixin",
-    "KeyboardInputMixin",
     "InputAccessor"
   ]
 }

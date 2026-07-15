@@ -134,53 +134,16 @@ public final class SoundReplacer {
         weaponCache.clear();
     }
 
-    /** 该物品是否是可以右键召唤的召唤武器（召唤类且使用方式含右键）。
-     *  供 AutoUse 在玩家右键召唤武器时提前设置待绑定项，避免紧接着右键
-     *  吃东西/放方块覆盖 lastUseItem 导致新召唤物绑定不上武器。 */
-    public static boolean isRightClickSummonWeapon(ItemStack stack) {
-        WeaponInfo info = parseWeapon(stack);
-        return info.isSummon() && (info.useMode == UseMode.RIGHT || info.useMode == UseMode.BOTH);
-    }
-
     // ---- Weapon use timing for context-based sound classification ----
     // Tracks recent player key presses so unregistered sounds can be classified
     // by weapon name even when no summon stand is nearby.
     // 现在区分左键和右键使用记录，并根据武器的 UseMode 过滤不匹配的按键。
-    private static long realTick = 0;          // absolute game-tick counter (synced with AutoUse)
+    private static long realTick = 0;          // absolute game-tick counter
     private static WeaponInfo recentWeaponInfo = null;  // 最近使用武器时的 WeaponInfo
     private static long recentWeaponUseTick = -99999L;  // tick when player last pressed a valid weapon key
     private static final long WEAPON_USE_WINDOW = 20L;  // ticks within which a sound is considered from that weapon
 
     private SoundReplacer() {
-    }
-
-    /** Called by AutoUse each tick to sync the absolute tick counter and
-     *  detect player weapon-use key presses for sound context classification.
-     *  按键记录现在会根据武器的 UseMode 过滤：只能左键的武器不记录右键操作，
-     *  只能右键的武器不记录左键操作。 */
-    public static void syncTick(long tick) {
-        realTick = tick;
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null) return;
-        boolean attack = client.options.attackKey.isPressed();
-        boolean use = client.options.useKey.isPressed();
-        if (!attack && !use) return;
-
-        ItemStack held = client.player.getMainHandStack();
-        if (held.isEmpty()) return;
-        WeaponInfo info = parseWeapon(held);
-        if (!info.isInfWeapon()) return; // 非 Inf 武器（没有伤害行 lore），不记录
-
-        // 根据武器的使用方式过滤按键
-        boolean validPress = switch (info.useMode) {
-            case LEFT  -> attack;       // 只能左键的武器：只记录左键
-            case RIGHT -> use;           // 只能右键的武器：只记录右键
-            case BOTH  -> attack || use; // 左右键都可以：记录任意按键
-        };
-        if (validPress) {
-            recentWeaponInfo = info;
-            recentWeaponUseTick = tick;
-        }
     }
 
     /**
@@ -365,22 +328,6 @@ public final class SoundReplacer {
     /** True if there is a summon stand (invisible armor stand) within the
      *  configured radius of the given sound position. */
     private static boolean nearbySummonExists(double x, double y, double z) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.world == null || client.player == null) return false;
-        ModConfig cfg = NyaaInfiniteInfernalUtils.CONFIG;
-        double radius = cfg != null ? cfg.autoUse.summonResummon.radius : 16.0;
-        boolean requireEquipment = cfg != null && cfg.summonGlow.requireEquipment;
-        double bestDist = radius * radius;
-        for (Entity e : client.world.getEntities()) {
-            if (!(e instanceof ArmorStandEntity as)) continue;
-            if (!as.isInvisible()) continue;
-            if (requireEquipment && !SummonGlow.hasEquipment(as)) continue;
-            double dx = e.getX() - x, dy = e.getY() - y, dz = e.getZ() - z;
-            double d = dx * dx + dy * dy + dz * dz;
-            if (d < bestDist) {
-                return true;
-            }
-        }
         return false;
     }
 
@@ -476,7 +423,7 @@ public final class SoundReplacer {
             return null;
         }
         ModConfig cfg = NyaaInfiniteInfernalUtils.CONFIG;
-        double radius = cfg != null ? cfg.autoUse.summonResummon.radius : 16.0;
+        double radius = 16.0;
         boolean requireEquipment = cfg != null && cfg.summonGlow.requireEquipment;
 
         // If the sound came directly from a summon stand, use its name.
